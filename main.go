@@ -100,6 +100,7 @@ func main() {
 	api.Use(newBasicAuthMiddleware(cfg.AdminCreds))
 	api.POST("/links", linkHandler.CreateLink)
 	api.GET("/links", linkHandler.ListLinks)
+	api.DELETE("/links/:id", linkHandler.DeleteLink)
 
 	e.GET("/dashboard", dashboardHandler.ServeHTML, newBasicAuthMiddleware(cfg.AdminCreds))
 	e.GET("/", func(c echo.Context) error {

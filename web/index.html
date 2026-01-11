@@ -53,6 +53,7 @@
 							<th>Link</th>
 							<th>Total Clicks</th>
 							<th>Last Clicked</th>
+							<th>Actions</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -62,6 +63,11 @@
 								<td data-label="Link"><span class="url-text" :title="link.url" x-text="link.url"></span></td>
 								<td data-label="Total Clicks" x-text="link.clicks || 0"></td>
 								<td data-label="Last Clicked" x-text="link.last_clicked_at ? formatDate(link.last_clicked_at) : '-'"></td>
+								<td data-label="Actions">
+									<button type="button" @click="deleteLink(link.id, link.slug)" class="delete-btn" :disabled="loading">
+										Delete
+									</button>
+								</td>
 							</tr>
 						</template>
 					</tbody>

@@ -199,6 +199,8 @@ body {
 
 button {
 	font-family: inherit;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
 	padding: var(--spacing-sm) var(--spacing-xl);
 	background: var(--color-primary);
 	color: var(--color-bg);
@@ -239,6 +241,22 @@ button:disabled {
 	background: var(--color-text-muted);
 	cursor: not-allowed;
 	opacity: 0.6;
+}
+
+.delete-btn {
+	background: #dc3545;
+	padding: var(--spacing-xs) var(--spacing-md);
+	font-size: var(--font-size-sm);
+}
+
+.delete-btn:hover:not(:disabled) {
+	background: #c82333;
+}
+
+@media (max-width: 767px) {
+	.delete-btn {
+		width: 100%;
+	}
 }
 
 .alert {

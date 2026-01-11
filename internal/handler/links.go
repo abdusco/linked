@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"strconv"
 
 	"github.com/abdusco/linked/internal"
 	"github.com/abdusco/linked/internal/repo"
@@ -168,6 +169,27 @@ func (h *LinkHandler) Redirect(c echo.Context) error {
 	}
 
 	return c.Redirect(http.StatusMovedPermanently, link.URL)
+}
+
+func (h *LinkHandler) DeleteLink(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid link id")
+	}
+
+	err = h.linksRepo.Delete(ctx, id)
+	if err != nil {
+		log.Error().Err(err).Int64("id", id).Msg("failed to delete link")
+		if errors.Is(err, internal.ErrLinkNotFound) {
+			return echo.NewHTTPError(http.StatusNotFound, "link not found")
+		}
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	return c.NoContent(http.StatusNoContent)
 }
 
 // getClientIP extracts the client IP from the request

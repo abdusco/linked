@@ -137,6 +137,34 @@ func (r *LinksRepo) ListAll(ctx context.Context) ([]*Link, error) {
 	return links, nil
 }
 
+func (r *LinksRepo) Delete(ctx context.Context, id int64) error {
+	executor := goqu.New("sqlite", r.db)
+
+	log.Debug().Int64("id", id).Msg("deleting link")
+
+	query := executor.From("links").Where(goqu.Ex{"id": id}).Delete()
+
+	result, err := query.Executor().ExecContext(ctx)
+	if err != nil {
+		log.Error().Err(err).Int64("id", id).Msg("failed to delete link")
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Error().Err(err).Int64("id", id).Msg("failed to get rows affected")
+		return err
+	}
+
+	if rowsAffected == 0 {
+		log.Debug().Int64("id", id).Msg("link not found for deletion")
+		return internal.ErrLinkNotFound
+	}
+
+	log.Info().Int64("id", id).Msg("link deleted successfully")
+	return nil
+}
+
 func (r *linkRow) toDomain() *Link {
 	return &Link{
 		ID:        r.ID,

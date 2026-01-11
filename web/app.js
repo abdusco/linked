@@ -72,6 +72,26 @@ function app() {
 			}
 		},
 
+		async deleteLink(id, slug) {
+			if (!confirm(`Are you sure you want to delete the link "${slug}"? This action cannot be undone.`)) {
+				return;
+			}
+
+			this.loading = true;
+			try {
+				await fetchJSON(`/api/links/${id}`, {
+					method: 'DELETE'
+				});
+
+				this.showMessage('Link deleted successfully!', 'success');
+				await this.loadLinks();
+			} catch (error) {
+				this.showError(error.message);
+			} finally {
+				this.loading = false;
+			}
+		},
+
 		showMessage(text, type) {
 			this.clearMessageTimeout();
 			this.message = { text, type };
