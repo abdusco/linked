@@ -23,6 +23,19 @@ func NewLinkHandler(linksRepo *repo.LinksRepo, clicksRepo *repo.ClicksRepo) *Lin
 	}
 }
 
+// getOrigin extracts the base URL (scheme + host) from the request
+func getOrigin(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	// Check for X-Forwarded-Proto header (common in reverse proxies)
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	}
+	return scheme + "://" + r.Host
+}
+
 type CreateLinkRequest struct {
 	URL  string `json:"url" validate:"required,url"`
 	Slug string `json:"slug"`
@@ -39,6 +52,7 @@ type LinkResponse struct {
 	ID        int64  `json:"id"`
 	Slug      string `json:"slug"`
 	URL       string `json:"url"`
+	ShortURL  string `json:"short_url"`
 	CreatedAt any    `json:"created_at"`
 	Clicks    int64  `json:"clicks"`
 	LastClick any    `json:"last_clicked_at"`
@@ -75,10 +89,12 @@ func (h *LinkHandler) CreateLink(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
+	origin := getOrigin(c.Request())
 	resp := LinkResponse{
 		ID:        link.ID,
 		Slug:      link.Slug,
 		URL:       link.URL,
+		ShortURL:  origin + "/" + link.Slug,
 		CreatedAt: link.CreatedAt,
 		Clicks:    link.Clicks,
 		LastClick: link.LastClick,
@@ -95,11 +111,13 @@ func (h *LinkHandler) ListLinks(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
+	origin := getOrigin(c.Request())
 	linksResponses := lo.Map(links, func(link *repo.Link, _ int) LinkResponse {
 		return LinkResponse{
 			ID:        link.ID,
 			Slug:      link.Slug,
 			URL:       link.URL,
+			ShortURL:  origin + "/" + link.Slug,
 			CreatedAt: link.CreatedAt,
 			Clicks:    link.Clicks,
 			LastClick: link.LastClick,
