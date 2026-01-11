@@ -2,8 +2,10 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
+	"regexp"
 
 	"github.com/abdusco/linked/internal"
 	"github.com/abdusco/linked/internal/repo"
@@ -42,9 +44,20 @@ type CreateLinkRequest struct {
 	Slug string `json:"slug"`
 }
 
+var slugRegex = regexp.MustCompile(`^[a-zA-Z0-9-_]+$`)
+
 func (r *CreateLinkRequest) Validate() error {
 	if r.URL == "" {
 		return errors.New("url is required")
+	}
+	const minSlugLength = 5
+	if r.Slug != "" {
+		if len(r.Slug) < minSlugLength {
+			return fmt.Errorf("slug must be at least %d characters long", minSlugLength)
+		}
+		if !slugRegex.MatchString(r.Slug) {
+			return errors.New("slug must contain only letters, numbers, and hyphens or underscores")
+		}
 	}
 	return nil
 }
