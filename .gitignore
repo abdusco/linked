@@ -1,0 +1,23 @@
+# Binary
+linked
+*.exe
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.env.local
+
+# Build
+dist/
+
