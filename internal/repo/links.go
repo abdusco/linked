@@ -7,9 +7,12 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/abdusco/linked/internal"
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
 	"github.com/rs/zerolog/log"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 type Link struct {
@@ -50,6 +53,11 @@ func (r *LinksRepo) Create(ctx context.Context, slug, url string) (*Link, error)
 	var row linkRow
 	found, err := query.Executor().ScanStructContext(ctx, &row)
 	if err != nil {
+		if sqliteErr, ok := err.(*sqlite.Error); ok {
+			if sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+				return nil, internal.ErrSlugExists
+			}
+		}
 		log.Error().Err(err).Str("slug", slug).Msg("failed to create link")
 		return nil, err
 	}

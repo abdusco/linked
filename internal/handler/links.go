@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/abdusco/linked/internal"
 	"github.com/abdusco/linked/internal/repo"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
@@ -86,6 +87,9 @@ func (h *LinkHandler) CreateLink(c echo.Context) error {
 	link, err := h.linksRepo.Create(ctx, req.Slug, req.URL)
 	if err != nil {
 		log.Error().Err(err).Str("slug", req.Slug).Msg("failed to create link")
+		if errors.Is(err, internal.ErrSlugExists) {
+			return echo.NewHTTPError(http.StatusConflict, "slug already exists")
+		}
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
