@@ -3,7 +3,7 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Link Shortener Dashboard</title>
+	<title>link·ed</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
@@ -13,7 +13,7 @@
 <body>
 	<div class="container" x-data="app()" x-init="init()">
 		<div class="header">
-			<h1>Link Shortener</h1>
+			<h1>link·ed</h1>
 			<p>Create and manage your shortened links</p>
 		</div>
 
@@ -24,15 +24,15 @@
 				</div>
 
 				<div class="form-group">
-					<div class="form-field" style="flex: 2;">
+					<div class="form-field">
 						<label for="url">URL</label>
 						<input type="url" id="url" x-model="url" placeholder="https://example.com" required>
 					</div>
-					<div class="form-field" style="flex: 1;">
+					<div class="form-field">
 						<label for="slug">Custom Slug (optional)</label>
 						<input type="text" id="slug" x-model="slug" placeholder="e.g. my-link">
 					</div>
-					<button type="submit" :disabled="loading">
+					<button type="submit" class="submit-btn" :disabled="loading">
 						<span x-text="loading ? 'Creating...' : 'Create Link'"></span>
 					</button>
 				</div>
@@ -58,10 +58,10 @@
 					<tbody>
 						<template x-for="link in links" :key="link.id">
 							<tr>
-								<td><span class="slug-badge" x-text="link.slug"></span></td>
-								<td><span class="url-text" :title="link.url" x-text="link.url"></span></td>
-								<td x-text="link.clicks || 0"></td>
-								<td x-text="link.last_clicked_at ? formatDate(link.last_clicked_at) : '-'"></td>
+								<td data-label="Slug"><span class="slug-badge" x-text="link.slug"></span></td>
+								<td data-label="Link"><span class="url-text" :title="link.url" x-text="link.url"></span></td>
+								<td data-label="Total Clicks" x-text="link.clicks || 0"></td>
+								<td data-label="Last Clicked" x-text="link.last_clicked_at ? formatDate(link.last_clicked_at) : '-'"></td>
 							</tr>
 						</template>
 					</tbody>
