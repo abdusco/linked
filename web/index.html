@@ -32,8 +32,8 @@
 						<label for="slug">Custom Slug (optional)</label>
 						<input type="text" id="slug" x-model="slug" placeholder="e.g. my-link">
 					</div>
-					<button type="submit" class="submit-btn" :disabled="loading">
-						<span x-text="loading ? 'Creating...' : 'Create Link'"></span>
+					<button type="submit" class="submit-btn" :disabled="creating">
+						<span x-text="creating ? 'Creating...' : 'Create Link'"></span>
 					</button>
 				</div>
 			</form>

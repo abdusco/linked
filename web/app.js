@@ -2,6 +2,7 @@ function app() {
 	return {
 		links: [],
 		loading: true,
+		creating: false,
 		message: { text: '', type: '' },
 		pollInterval: null,
 		messageTimeout: null,
@@ -52,7 +53,7 @@ function app() {
 				return;
 			}
 
-			this.loading = true;
+			this.creating = true;
 			try {
 				const response = await fetchJSON('/api/links', {
 					method: 'POST',
@@ -68,7 +69,7 @@ function app() {
 			} catch (error) {
 				this.showError(error.message);
 			} finally {
-				this.loading = false;
+				this.creating = false;
 			}
 		},
 
