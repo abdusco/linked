@@ -149,8 +149,9 @@ func (r *linkRow) toDomain() *Link {
 }
 
 func GenerateSlug() string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	slug := make([]byte, 6)
+	const charset = "abcdefghjkmnopqrstuvwxyz0123456789"
+	const slugLength = 6
+	slug := make([]byte, slugLength)
 	for i := range slug {
 		slug[i] = charset[rand.Intn(len(charset))]
 	}
