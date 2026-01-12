@@ -25,7 +25,7 @@ func (h *AuthHandler) ServeLoginPage(c echo.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to read login.html: %w", err)
 	}
-	return c.Blob(http.StatusOK, "text/html", data)
+	return c.HTMLBlob(http.StatusOK, data)
 }
 
 func (h *AuthHandler) Login(c echo.Context) error {

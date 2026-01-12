@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"fmt"
+	"net/http"
+
 	"github.com/abdusco/linked/web"
 	"github.com/labstack/echo/v4"
 )
@@ -14,7 +17,7 @@ func NewDashboardHandler() *DashboardHandler {
 func (h *DashboardHandler) ServeHTML(c echo.Context) error {
 	data, err := web.FS.ReadFile("index.html")
 	if err != nil {
-		return c.String(500, "failed to read index.html")
+		return fmt.Errorf("failed to read index.html: %w", err)
 	}
-	return c.Blob(200, "text/html", data)
+	return c.HTMLBlob(http.StatusOK, data)
 }
