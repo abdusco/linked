@@ -1,21 +1,25 @@
 package handler
 
 import (
+	"embed"
 	"fmt"
 	"net/http"
 
-	"github.com/abdusco/linked/web"
 	"github.com/labstack/echo/v4"
 )
 
-type DashboardHandler struct{}
-
-func NewDashboardHandler() *DashboardHandler {
-	return &DashboardHandler{}
+type DashboardHandler struct {
+	staticFS embed.FS
 }
 
-func (h *DashboardHandler) ServeHTML(c echo.Context) error {
-	data, err := web.FS.ReadFile("index.html")
+func NewDashboardHandler(staticFS embed.FS) *DashboardHandler {
+	return &DashboardHandler{
+		staticFS: staticFS,
+	}
+}
+
+func (h *DashboardHandler) ServeDashboardPage(c echo.Context) error {
+	data, err := h.staticFS.ReadFile("index.html")
 	if err != nil {
 		return fmt.Errorf("failed to read index.html: %w", err)
 	}

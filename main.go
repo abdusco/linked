@@ -128,15 +128,17 @@ func run(ctx context.Context, cfg Config) error {
 	})
 
 	authenticator := auth.NewAuthenticator(credentials, cfg.JWTSecret)
-	authHandler := handler.NewAuthHandler(authenticator)
+	authMiddleware := auth.NewAuthMiddleware(authenticator)
+	authHandler := handler.NewAuthHandler(authenticator, web.FS)
 
 	e.GET("/", authHandler.ServeLoginPage)
 	e.POST("/login", authHandler.Login)
 	e.GET("/logout", authHandler.Logout)
 
-	api := e.Group("/api")
+	dashboardHandler := handler.NewDashboardHandler(web.FS)
+	e.GET("/dashboard", dashboardHandler.ServeDashboardPage, authMiddleware)
 
-	authMiddleware := auth.NewAuthMiddleware(authenticator)
+	api := e.Group("/api")
 	api.Use(authMiddleware)
 
 	linksRepo := repo.NewLinksRepo(dbInstance)
@@ -145,9 +147,6 @@ func run(ctx context.Context, cfg Config) error {
 	api.POST("/links", linkHandler.CreateLink)
 	api.GET("/links", linkHandler.ListLinks)
 	api.DELETE("/links/:id", linkHandler.DeleteLink)
-
-	dashboardHandler := handler.NewDashboardHandler()
-	e.GET("/dashboard", dashboardHandler.ServeHTML, authMiddleware)
 
 	if cfg.Debug {
 		log.Info().Msg("serving static files from disk")

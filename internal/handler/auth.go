@@ -1,27 +1,29 @@
 package handler
 
 import (
+	"embed"
 	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/abdusco/linked/internal/auth"
-	"github.com/abdusco/linked/web"
 	"github.com/labstack/echo/v4"
 )
 
 type AuthHandler struct {
-	auther *auth.Authenticator
+	auther   *auth.Authenticator
+	staticFS embed.FS
 }
 
-func NewAuthHandler(auther *auth.Authenticator) *AuthHandler {
+func NewAuthHandler(auther *auth.Authenticator, staticFS embed.FS) *AuthHandler {
 	return &AuthHandler{
-		auther: auther,
+		auther:   auther,
+		staticFS: staticFS,
 	}
 }
 
 func (h *AuthHandler) ServeLoginPage(c echo.Context) error {
-	data, err := web.FS.ReadFile("login.html")
+	data, err := h.staticFS.ReadFile("login.html")
 	if err != nil {
 		return fmt.Errorf("failed to read login.html: %w", err)
 	}
