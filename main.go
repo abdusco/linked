@@ -79,6 +79,9 @@ func main() {
 		log.Fatal().Err(err).Str("level", cfg.LogLevel).Msg("failed to parse log level")
 	}
 	zerolog.SetGlobalLevel(level)
+	if cfg.Debug {
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	}
 
 	log.Info().
 		Interface("config", cfg).
@@ -133,8 +136,13 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create static filesystem")
 	}
-
-	e.StaticFS("/static", echo.MustSubFS(subFS, ""))
+	if cfg.Debug {
+		log.Info().Msg("serving static files from disk")
+		e.Static("/static", "web")
+	} else {
+		log.Info().Msg("serving static files from embedded filesystem")
+		e.StaticFS("/static", echo.MustSubFS(subFS, ""))
+	}
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(200, map[string]string{"status": "ok"})
@@ -174,6 +182,7 @@ func formatDBPath(path string) string {
 func customErrorHandler(err error, c echo.Context) {
 	code := http.StatusInternalServerError
 	message := "internal server error"
+	isAPICall := strings.HasPrefix(c.Path(), "/api/")
 
 	var httpErr *echo.HTTPError
 	if errors.As(err, &httpErr) {
@@ -181,6 +190,11 @@ func customErrorHandler(err error, c echo.Context) {
 		if msg, ok := httpErr.Message.(string); ok {
 			message = msg
 		}
+	}
+
+	if !isAPICall && code == http.StatusUnauthorized {
+		c.Redirect(http.StatusTemporaryRedirect, "/")
+		return
 	}
 
 	log.Error().

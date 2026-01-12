@@ -27,13 +27,11 @@ func NewLinkHandler(linksRepo *repo.LinksRepo, clicksRepo *repo.ClicksRepo) *Lin
 	}
 }
 
-// getOrigin extracts the base URL (scheme + host) from the request
 func getOrigin(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
 	}
-	// Check for X-Forwarded-Proto header (common in reverse proxies)
 	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
 		scheme = proto
 	}
@@ -73,7 +71,6 @@ type LinkResponse struct {
 	LastClick any    `json:"last_clicked_at"`
 }
 
-// API Response wrappers
 type CreateLinkResponse struct {
 	Link LinkResponse `json:"link"`
 }
@@ -157,18 +154,16 @@ func (h *LinkHandler) Redirect(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "link not found")
 	}
 
-	// Extract IP address from request
 	userAgent := c.Request().UserAgent()
 	ipAddress := getClientIP(c.Request())
 
 	log.Info().Str("slug", slug).Str("ip", ipAddress).Msg("redirecting link")
 
-	// Track click with IP and user agent
 	if err := h.clicksRepo.Create(ctx, link.ID, userAgent, ipAddress); err != nil {
 		log.Error().Err(err).Str("slug", slug).Msg("failed to record click")
 	}
 
-	return c.Redirect(http.StatusMovedPermanently, link.URL)
+	return c.Redirect(http.StatusPermanentRedirect, link.URL)
 }
 
 func (h *LinkHandler) DeleteLink(c echo.Context) error {
@@ -192,23 +187,19 @@ func (h *LinkHandler) DeleteLink(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-// getClientIP extracts the client IP from the request
 func getClientIP(r *http.Request) string {
-	// Try X-Forwarded-For header first (for proxies)
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		if ips := net.ParseIP(xff); ips != nil {
 			return xff
 		}
 	}
 
-	// Try X-Real-IP header
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
 		if ip := net.ParseIP(xri); ip != nil {
 			return xri
 		}
 	}
 
-	// Fall back to RemoteAddr
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host
 	}
