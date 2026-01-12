@@ -139,9 +139,41 @@ function app() {
 			const date = new Date(dateString);
 			return date.toLocaleString();
 		},
+
+		parseUrl,
+
+		copyShortUrl(shortUrl) {
+			copyToClipboard(shortUrl);
+			this.showMessage('Short URL copied to clipboard!', 'success');
+		},
 	};
 }
 
+
+/**
+ * Parses a URL into domain and path components.
+ * @param {string} url - The URL to parse.
+ * @returns {{domain: string, path: string}} - Object with domain and path.
+ */
+function parseUrl(url) {
+	try {
+		const urlObj = new URL(url);
+		const domain = urlObj.origin;
+		const path = urlObj.pathname + urlObj.search + urlObj.hash;
+		return { domain, path };
+	} catch (err) {
+		// Fallback for malformed URLs: try to extract domain manually
+		const match = url.match(/^(https?:\/\/[^\/]+)/);
+		if (match) {
+			return {
+				domain: match[1],
+				path: url.substring(match[1].length)
+			};
+		}
+		// If all else fails, return full URL as domain
+		return { domain: url, path: '' };
+	}
+}
 
 function copyToClipboard(text) {
 	const textarea = document.createElement('textarea');

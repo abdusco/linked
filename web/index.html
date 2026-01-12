@@ -53,8 +53,12 @@
 					<tbody>
 						<template x-for="link in links" :key="link.id">
 							<tr>
-								<td data-label="Slug"><span class="slug-badge" x-text="link.slug"></span></td>
-								<td data-label="Link" x-text="link.url" :title="link.url"></td>
+								<td data-label="Slug">
+									<span class="slug-badge" x-text="link.slug" @click="copyShortUrl(link.short_url)" :title="'Click to copy: ' + link.short_url"></span>
+								</td>
+								<td data-label="Link" :title="link.url">
+									<span class="url-domain" x-text="parseUrl(link.url).domain"></span><span class="url-path" x-text="parseUrl(link.url).path"></span>
+								</td>
 								<td data-label="Clicks" x-text="link.clicks || 0"></td>
 								<td data-label="Last Clicked" x-text="link.last_clicked_at ? formatDate(link.last_clicked_at) : '-'"></td>
 								<td data-label="Actions">
