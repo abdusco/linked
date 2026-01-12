@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"sync"
 
@@ -13,7 +14,7 @@ var (
 	once     sync.Once
 )
 
-func Init(dbPath string) (*sql.DB, error) {
+func Init(ctx context.Context, dbPath string) (*sql.DB, error) {
 	var err error
 	once.Do(func() {
 		instance, err = sql.Open("sqlite", dbPath)
@@ -22,7 +23,7 @@ func Init(dbPath string) (*sql.DB, error) {
 			return
 		}
 
-		err = instance.Ping()
+		err = instance.PingContext(ctx)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to ping database")
 			return
@@ -30,7 +31,7 @@ func Init(dbPath string) (*sql.DB, error) {
 
 		log.Debug().Msg("database connection successful")
 
-		err = migrate(instance)
+		err = migrate(ctx, instance)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to run migrations")
 		} else {
@@ -40,11 +41,7 @@ func Init(dbPath string) (*sql.DB, error) {
 	return instance, err
 }
 
-func Get() *sql.DB {
-	return instance
-}
-
-func migrate(db *sql.DB) error {
+func migrate(ctx context.Context, db *sql.DB) error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS links (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,6 +64,6 @@ func migrate(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_clicks_clicked_at ON clicks(clicked_at);
 	`
 
-	_, err := db.Exec(schema)
+	_, err := db.ExecContext(ctx, schema)
 	return err
 }

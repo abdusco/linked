@@ -1,12 +1,17 @@
 package main
 
 import (
+	"cmp"
+	"context"
 	"errors"
-	"io/fs"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/abdusco/linked/internal/auth"
 	"github.com/abdusco/linked/internal/db"
@@ -25,6 +30,7 @@ var (
 )
 
 type Config struct {
+	Host       string
 	Port       string
 	DBPath     string
 	AdminCreds string
@@ -33,27 +39,17 @@ type Config struct {
 	Debug      bool
 }
 
-func main() {
-	log.Info().
-		Str("version", version).
-		Str("build_time", buildTime).
-		Msg("starting application")
-
-	cfg := &Config{
-		Port:       os.Getenv("PORT"),
-		DBPath:     os.Getenv("DB_PATH"),
+func newConfigFromEnv() (Config, error) {
+	cfg := Config{
+		Host:       cmp.Or(os.Getenv("HOST"), "localhost"),
+		Port:       cmp.Or(os.Getenv("PORT"), "8080"),
+		DBPath:     cmp.Or(os.Getenv("DB_PATH"), "linked.db"),
 		AdminCreds: os.Getenv("ADMIN_CREDENTIALS"),
 		JWTSecret:  os.Getenv("JWT_SECRET"),
-		LogLevel:   os.Getenv("LOG_LEVEL"),
+		LogLevel:   cmp.Or(os.Getenv("LOG_LEVEL"), "info"),
 		Debug:      os.Getenv("DEBUG") == "1",
 	}
 
-	if cfg.Port == "" {
-		cfg.Port = "8080"
-	}
-	if cfg.DBPath == "" {
-		cfg.DBPath = "linked.db"
-	}
 	cfg.DBPath = formatDBPath(cfg.DBPath)
 
 	if cfg.AdminCreds == "" {
@@ -61,18 +57,23 @@ func main() {
 		log.Warn().Msg("using default admin credentials - set ADMIN_CREDENTIALS for production")
 	}
 
-	credentials, err := auth.NewCredentials(cfg.AdminCreds)
-	if err != nil {
-		log.Fatal().Err(err).Str("admin_creds", cfg.AdminCreds).Msg("failed to parse ADMIN_CREDENTIALS")
-	}
-
 	if cfg.JWTSecret == "" {
 		cfg.JWTSecret = cfg.AdminCreds
 		log.Warn().Msg("using ADMIN_CREDENTIALS as JWT_SECRET - set JWT_SECRET for production")
 	}
-	if cfg.LogLevel == "" {
-		cfg.LogLevel = "info"
+
+	return cfg, nil
+}
+
+func main() {
+	cfg, err := newConfigFromEnv()
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to parse configuration from environment")
 	}
+
+	log.Info().
+		Interface("config", cfg).
+		Msg("current configuration")
 
 	level, err := zerolog.ParseLevel(cfg.LogLevel)
 	if err != nil {
@@ -83,24 +84,37 @@ func main() {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	}
 
-	log.Info().
-		Interface("config", cfg).
-		Msg("configuration parsed")
+	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
-	dbInstance, err := db.Init(cfg.DBPath)
+	if err := run(ctx, cfg); err != nil {
+		log.Fatal().Err(err).Msg("application error")
+	}
+}
+
+func run(ctx context.Context, cfg Config) error {
+	log.Info().
+		Str("version", version).
+		Str("build_time", buildTime).
+		Msg("starting application")
+
+	credentials, err := auth.NewCredentials(cfg.AdminCreds)
+	if err != nil {
+		return fmt.Errorf("failed to parse admin credentials: %w", err)
+	}
+
+	dbInstance, err := db.Init(ctx, cfg.DBPath)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to initialize database")
 	}
 	defer dbInstance.Close()
-
-	log.Info().Msg("database initialized successfully")
 
 	e := echo.New()
 	defer e.Close()
 
 	e.HideBanner = true
 	e.HidePort = true
-
 	e.HTTPErrorHandler = customErrorHandler
 
 	e.Use(middleware.RequestLogger())
@@ -114,9 +128,9 @@ func main() {
 	e.POST("/login", authHandler.Login)
 	e.GET("/logout", authHandler.Logout)
 
-	authMiddleware := auth.NewAuthMiddleware(authenticator)
-
 	api := e.Group("/api")
+
+	authMiddleware := auth.NewAuthMiddleware(authenticator)
 	api.Use(authMiddleware)
 
 	linksRepo := repo.NewLinksRepo(dbInstance)
@@ -129,30 +143,51 @@ func main() {
 	dashboardHandler := handler.NewDashboardHandler()
 	e.GET("/dashboard", dashboardHandler.ServeHTML, authMiddleware)
 
-	// Parameterized route (must be last)
-	e.GET("/:slug", linkHandler.Redirect)
-
-	subFS, err := fs.Sub(web.FS, ".")
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to create static filesystem")
-	}
 	if cfg.Debug {
 		log.Info().Msg("serving static files from disk")
 		e.Static("/static", "web")
 	} else {
 		log.Info().Msg("serving static files from embedded filesystem")
-		e.StaticFS("/static", echo.MustSubFS(subFS, ""))
+		e.StaticFS("/static", web.FS)
 	}
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(200, map[string]string{"status": "ok"})
 	})
 
-	log.Info().Str("port", cfg.Port).Msg("server starting")
-	err = e.Start(":" + cfg.Port)
-	if !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal().Err(err).Msg("server stopped")
+	// Parameterized route (must be last)
+	e.GET("/:slug", linkHandler.Redirect)
+
+	log.Info().Str("address", cfg.Port).Msg("server starting")
+
+	// Run server and handle graceful shutdown
+	runServer(ctx, e, cfg.Port)
+
+	return nil
+}
+
+func runServer(ctx context.Context, e *echo.Echo, port string) {
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- e.Start(":" + port)
+	}()
+
+	// Wait for context cancellation (Ctrl+C or SIGTERM)
+	<-ctx.Done()
+
+	log.Info().Msg("shutdown signal received, gracefully shutting down...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := e.Shutdown(shutdownCtx); err != nil {
+		log.Error().Err(err).Msg("error during graceful shutdown")
 	}
+
+	if err := <-serverErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Error().Err(err).Msg("server error")
+	}
+
 	log.Info().Msg("server stopped")
 }
 
