@@ -49,6 +49,24 @@ func newConfigFromEnv() (Config, error) {
 		Debug:      os.Getenv("DEBUG") == "1",
 	}
 
+	return cfg, nil
+}
+
+func main() {
+	cfg, err := newConfigFromEnv()
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to parse configuration from environment")
+	}
+
+	level, err := zerolog.ParseLevel(cfg.LogLevel)
+	if err != nil {
+		log.Fatal().Err(err).Str("level", cfg.LogLevel).Msg("failed to parse log level")
+	}
+	zerolog.SetGlobalLevel(level)
+	if cfg.Debug {
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	}
+
 	if cfg.AdminCreds == "" {
 		cfg.AdminCreds = "admin:admin"
 		log.Warn().Msg("using default admin credentials - set ADMIN_CREDENTIALS for production")
@@ -59,27 +77,9 @@ func newConfigFromEnv() (Config, error) {
 		log.Warn().Msg("using ADMIN_CREDENTIALS as JWT_SECRET - set JWT_SECRET for production")
 	}
 
-	return cfg, nil
-}
-
-func main() {
-	cfg, err := newConfigFromEnv()
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to parse configuration from environment")
-	}
-
 	log.Info().
 		Interface("config", cfg).
 		Msg("current configuration")
-
-	level, err := zerolog.ParseLevel(cfg.LogLevel)
-	if err != nil {
-		log.Fatal().Err(err).Str("level", cfg.LogLevel).Msg("failed to parse log level")
-	}
-	zerolog.SetGlobalLevel(level)
-	if cfg.Debug {
-		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-	}
 
 	ctx := context.Background()
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
