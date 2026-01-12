@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"net/url"
 	"sync"
 
 	"github.com/rs/zerolog/log"
@@ -15,9 +16,10 @@ var (
 )
 
 func Init(ctx context.Context, dbPath string) (*sql.DB, error) {
+	dsn := formatDBPath(dbPath)
 	var err error
 	once.Do(func() {
-		instance, err = sql.Open("sqlite", dbPath)
+		instance, err = sql.Open("sqlite", dsn)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to open database")
 			return
@@ -39,6 +41,21 @@ func Init(ctx context.Context, dbPath string) (*sql.DB, error) {
 		}
 	})
 	return instance, err
+}
+
+func formatDBPath(path string) string {
+	// Add pragmas for better performance and safety
+	// See: https://pkg.go.dev/modernc.org/sqlite#pkg-overview
+	params := url.Values{}
+	params.Set("cache", "shared")
+	params.Set("mode", "rwc")
+	params.Set("_time_format", "sqlite")
+	params.Set("_pragma", "foreign_keys(1)")
+	params.Add("_pragma", "journal_mode(WAL)")
+	params.Add("_pragma", "synchronous(NORMAL)")
+	params.Set("_busy_timeout", "5000")
+
+	return "file:" + path + "?" + params.Encode()
 }
 
 func migrate(ctx context.Context, db *sql.DB) error {

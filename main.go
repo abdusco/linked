@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -49,8 +48,6 @@ func newConfigFromEnv() (Config, error) {
 		LogLevel:   cmp.Or(os.Getenv("LOG_LEVEL"), "info"),
 		Debug:      os.Getenv("DEBUG") == "1",
 	}
-
-	cfg.DBPath = formatDBPath(cfg.DBPath)
 
 	if cfg.AdminCreds == "" {
 		cfg.AdminCreds = "admin:admin"
@@ -189,29 +186,6 @@ func runServer(ctx context.Context, e *echo.Echo, port string) {
 	}
 
 	log.Info().Msg("server stopped")
-}
-
-func formatDBPath(path string) string {
-	if path == "" {
-		path = "file:linked.db"
-	}
-
-	if !strings.HasPrefix(path, "file:") {
-		path = "file:" + path
-	}
-
-	// Add pragmas for better performance and safety
-	// See: https://pkg.go.dev/modernc.org/sqlite#pkg-overview
-	params := url.Values{}
-	params.Set("cache", "shared")
-	params.Set("mode", "rwc")
-	params.Set("_time_format", "sqlite")
-	params.Set("_pragma", "foreign_keys(1)")
-	params.Add("_pragma", "journal_mode(WAL)")
-	params.Add("_pragma", "synchronous(NORMAL)")
-	params.Set("_busy_timeout", "5000")
-
-	return path + "?" + params.Encode()
 }
 
 func customErrorHandler(err error, c echo.Context) {
