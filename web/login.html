@@ -28,6 +28,7 @@
 			font-family: 'JetBrains Mono', monospace;
 			background: linear-gradient(135deg, var(--primary) 0%, #764ba2 100%);
 			min-height: 100vh;
+			min-height: 100dvh;
 			display: flex;
 			align-items: center;
 			justify-content: center;
@@ -148,8 +149,8 @@
 			</div>
 
 			<form @submit.prevent="login()">
-				<input type="text" x-model="username" placeholder="Username" required autofocus>
-				<input type="password" x-model="password" placeholder="Password" required>
+				<input name="username" type="text" x-model="username" placeholder="Username" required autofocus>
+				<input name="password" type="password" x-model="password" placeholder="Password" required>
 				<button type="submit" :disabled="submitting">
 					<span x-text="submitting ? 'Signing in...' : 'Sign In'"></span>
 				</button>
