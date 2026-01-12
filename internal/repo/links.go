@@ -4,25 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"math/rand"
 	"time"
 
 	"github.com/abdusco/linked/internal"
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/sqlite3"
-	"github.com/rs/zerolog/log"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
-
-type Link struct {
-	ID        int64  `json:"id"`
-	Slug      string `json:"slug"`
-	URL       string `json:"url"`
-	CreatedAt Date   `json:"created_at"`
-	Clicks    int64  `json:"clicks"`
-	LastClick *Date  `json:"last_clicked_at"`
-}
 
 type linkRow struct {
 	ID        int64  `db:"id" goqu:"skipinsert,skipupdate"`
@@ -32,87 +23,59 @@ type linkRow struct {
 }
 
 type LinksRepo struct {
-	db *sql.DB
+	db *goqu.Database
 }
 
 func NewLinksRepo(db *sql.DB) *LinksRepo {
-	return &LinksRepo{db: db}
+	return &LinksRepo{db: goqu.New("sqlite", db)}
 }
 
-func (r *LinksRepo) Create(ctx context.Context, slug, url string) (*Link, error) {
-	executor := goqu.New("sqlite", r.db)
-
-	log.Debug().Str("slug", slug).Str("url", url).Msg("creating link")
-
-	now := Date(time.Now().UTC())
-	query := executor.Insert("links").
-		Cols("slug", "url", "created_at").
-		Vals([]any{slug, url, now}).
-		Returning("id", "slug", "url", "created_at")
+func (r *LinksRepo) Create(ctx context.Context, slug, url string) (*internal.Link, error) {
+	q := r.db.Insert("links").
+		Rows(linkRow{
+			Slug:      slug,
+			URL:       url,
+			CreatedAt: Date(time.Now().UTC()),
+		}).
+		Returning(linkRow{})
 
 	var row linkRow
-	found, err := query.Executor().ScanStructContext(ctx, &row)
+	found, err := q.Executor().ScanStructContext(ctx, &row)
 	if err != nil {
-		if sqliteErr, ok := err.(*sqlite.Error); ok {
-			if sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-				return nil, internal.ErrSlugExists
-			}
+		if isUniqueConstraintError(err) {
+			return nil, internal.ErrSlugExists
 		}
-		log.Error().Err(err).Str("slug", slug).Msg("failed to create link")
-		return nil, err
-	}
-
-	if !found {
-		log.Warn().Str("slug", slug).Msg("link creation returned no rows")
-		return nil, errors.New("failed to create link")
+		return nil, fmt.Errorf("failed to insert link: %w", err)
+	} else if !found {
+		return nil, errors.New("insert did not return anything")
 	}
 
 	link := row.toDomain()
-	log.Info().Int64("id", link.ID).Str("slug", link.Slug).Msg("link created successfully")
 
 	return link, nil
 }
 
-func (r *LinksRepo) GetBySlug(ctx context.Context, slug string) (*Link, error) {
-	executor := goqu.New("sqlite", r.db)
-
-	log.Debug().Str("slug", slug).Msg("fetching link by slug")
-
-	query := executor.From("links").Where(goqu.Ex{"slug": slug}).Select(
-		"id", "slug", "url", "created_at",
-	)
+func (r *LinksRepo) GetBySlug(ctx context.Context, slug string) (*internal.Link, error) {
+	q := r.db.
+		From("links").
+		Where(goqu.I("slug").Eq(slug)).
+		Select(linkRow{})
 
 	var row linkRow
-	found, err := query.Executor().ScanStructContext(ctx, &row)
+	found, err := q.ScanStructContext(ctx, &row)
 	if err != nil {
-		log.Error().Err(err).Str("slug", slug).Msg("failed to fetch link")
-		return nil, err
+		return nil, fmt.Errorf("failed to scan link: %w", err)
+	} else if !found {
+		return nil, internal.ErrLinkNotFound
 	}
 
-	if !found {
-		log.Debug().Str("slug", slug).Msg("link not found")
-		return nil, errors.New("link not found")
-	}
-
-	link := row.toDomain()
-
-	stats, _ := NewClicksRepo(r.db).GetStatsForLink(ctx, link.ID)
-	if stats != nil {
-		link.Clicks = stats.Total
-		link.LastClick = stats.LastClickedAt
-	}
-
-	log.Debug().Int64("id", link.ID).Str("slug", slug).Int64("clicks", link.Clicks).Msg("link fetched")
-
-	return link, nil
+	return row.toDomain(), nil
 }
 
-func (r *LinksRepo) ListAll(ctx context.Context) ([]*Link, error) {
-	executor := goqu.New("sqlite", r.db)
-
-	query := executor.From("links").Select(
-		"id", "slug", "url", "created_at",
-	).Order(goqu.C("created_at").Desc())
+func (r *LinksRepo) ListAll(ctx context.Context) ([]*internal.Link, error) {
+	query := r.db.From("links").
+		Select(linkRow{}).
+		Order(goqu.C("id").Desc())
 
 	var rows []linkRow
 	err := query.Executor().ScanStructsContext(ctx, &rows)
@@ -120,15 +83,15 @@ func (r *LinksRepo) ListAll(ctx context.Context) ([]*Link, error) {
 		return nil, err
 	}
 
-	links := make([]*Link, len(rows))
+	clicksRepo := NewClicksRepo(r.db.Db.(*sql.DB))
+
+	links := make([]*internal.Link, len(rows))
 	for i, row := range rows {
 		link := row.toDomain()
 
-		// Get click stats
-		stats, _ := NewClicksRepo(r.db).GetStatsForLink(ctx, link.ID)
-		if stats != nil {
-			link.Clicks = stats.Total
-			link.LastClick = stats.LastClickedAt
+		stats, err := clicksRepo.GetStatsForLink(ctx, link.ID)
+		if err == nil {
+			link.Stats = stats
 		}
 
 		links[i] = link
@@ -138,41 +101,31 @@ func (r *LinksRepo) ListAll(ctx context.Context) ([]*Link, error) {
 }
 
 func (r *LinksRepo) Delete(ctx context.Context, id int64) error {
-	executor := goqu.New("sqlite", r.db)
-
-	log.Debug().Int64("id", id).Msg("deleting link")
-
-	query := executor.From("links").Where(goqu.Ex{"id": id}).Delete()
+	query := r.db.From("links").
+		Where(goqu.I("id").Eq(id)).
+		Delete()
 
 	result, err := query.Executor().ExecContext(ctx)
 	if err != nil {
-		log.Error().Err(err).Int64("id", id).Msg("failed to delete link")
-		return err
+		return fmt.Errorf("failed to delete link: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
+	n, err := result.RowsAffected()
 	if err != nil {
-		log.Error().Err(err).Int64("id", id).Msg("failed to get rows affected")
-		return err
-	}
-
-	if rowsAffected == 0 {
-		log.Debug().Int64("id", id).Msg("link not found for deletion")
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	} else if n == 0 {
 		return internal.ErrLinkNotFound
 	}
 
-	log.Info().Int64("id", id).Msg("link deleted successfully")
 	return nil
 }
 
-func (r *linkRow) toDomain() *Link {
-	return &Link{
+func (r *linkRow) toDomain() *internal.Link {
+	return &internal.Link{
 		ID:        r.ID,
 		Slug:      r.Slug,
 		URL:       r.URL,
-		CreatedAt: r.CreatedAt,
-		Clicks:    0,
-		LastClick: nil,
+		CreatedAt: r.CreatedAt.Time(),
 	}
 }
 
@@ -184,4 +137,12 @@ func GenerateSlug() string {
 		slug[i] = charset[rand.Intn(len(charset))]
 	}
 	return string(slug)
+}
+
+func isUniqueConstraintError(err error) bool {
+	var sqliteErr *sqlite.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
+	}
+	return false
 }

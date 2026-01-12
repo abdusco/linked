@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/abdusco/linked/internal"
 	"github.com/abdusco/linked/internal/repo"
@@ -62,13 +63,12 @@ func (r *CreateLinkRequest) Validate() error {
 }
 
 type LinkResponse struct {
-	ID        int64  `json:"id"`
-	Slug      string `json:"slug"`
-	URL       string `json:"url"`
-	ShortURL  string `json:"short_url"`
-	CreatedAt any    `json:"created_at"`
-	Clicks    int64  `json:"clicks"`
-	LastClick any    `json:"last_clicked_at"`
+	ID        int64               `json:"id"`
+	Slug      string              `json:"slug"`
+	URL       string              `json:"url"`
+	ShortURL  string              `json:"short_url"`
+	CreatedAt time.Time           `json:"created_at"`
+	Stats     *internal.LinkStats `json:"stats,omitempty"`
 }
 
 type CreateLinkResponse struct {
@@ -111,8 +111,7 @@ func (h *LinkHandler) CreateLink(c echo.Context) error {
 		URL:       link.URL,
 		ShortURL:  origin + "/" + link.Slug,
 		CreatedAt: link.CreatedAt,
-		Clicks:    link.Clicks,
-		LastClick: link.LastClick,
+		Stats:     link.Stats,
 	}
 
 	return c.JSON(http.StatusCreated, CreateLinkResponse{Link: resp})
@@ -127,15 +126,14 @@ func (h *LinkHandler) ListLinks(c echo.Context) error {
 	}
 
 	origin := getOrigin(c.Request())
-	linksResponses := lo.Map(links, func(link *repo.Link, _ int) LinkResponse {
+	linksResponses := lo.Map(links, func(link *internal.Link, _ int) LinkResponse {
 		return LinkResponse{
 			ID:        link.ID,
 			Slug:      link.Slug,
 			URL:       link.URL,
 			ShortURL:  origin + "/" + link.Slug,
 			CreatedAt: link.CreatedAt,
-			Clicks:    link.Clicks,
-			LastClick: link.LastClick,
+			Stats:     link.Stats,
 		}
 	})
 

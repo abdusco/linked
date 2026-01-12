@@ -59,8 +59,8 @@
 								<td data-label="Link" :title="link.url">
 									<span class="url-domain" x-text="parseUrl(link.url).domain"></span><span class="url-path" x-text="parseUrl(link.url).path"></span>
 								</td>
-								<td data-label="Clicks" x-text="link.clicks || 0"></td>
-								<td data-label="Last Clicked" x-text="link.last_clicked_at ? formatDate(link.last_clicked_at) : '-'"></td>
+								<td data-label="Clicks" x-text="link.stats?.clicks || 0"></td>
+								<td data-label="Last Clicked" x-text="link.stats?.last_clicked_at ? formatDate(link.stats?.last_clicked_at) : '-'"></td>
 								<td data-label="Actions">
 									<button type="button" @click="deleteLink(link.id, link.slug)" class="delete-btn" :disabled="loading">
 										Delete
