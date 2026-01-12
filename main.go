@@ -104,7 +104,7 @@ func run(ctx context.Context, cfg Config) error {
 
 	dbInstance, err := db.Init(ctx, cfg.DBPath)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to initialize database")
+		return fmt.Errorf("failed to initialize database: %w", err)
 	}
 	defer dbInstance.Close()
 
