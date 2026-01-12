@@ -12,6 +12,22 @@ function loginApp() {
 		submitting: false,
 		errorMessage: '',
 
+		async init() {
+			// Check if user is already authenticated
+			try {
+				await fetchJSON('/api/links');
+				// If request succeeds, user is authenticated - redirect to dashboard
+				window.location.href = '/dashboard';
+			} catch (error) {
+				// If 401 (UnauthenticatedError), user is not logged in - stay on login page
+				// Silently handle this as it's expected for unauthenticated users
+				if (!(error instanceof UnauthenticatedError)) {
+					// Only log unexpected errors, don't show them to user
+					console.error('Unexpected error during auth check:', error);
+				}
+			}
+		},
+
 		async login() {
 			this.errorMessage = '';
 			this.submitting = true;
