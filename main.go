@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -163,17 +164,18 @@ func run(ctx context.Context, cfg Config) error {
 	// Parameterized route (must be last)
 	e.GET("/:slug", linkHandler.Redirect)
 
-	log.Info().Str("address", cfg.Port).Msg("server starting")
+	addr := net.JoinHostPort(cfg.Host, cfg.Port)
+	log.Info().Str("address", "http://"+addr).Msg("server starting")
 
-	runServer(ctx, e, cfg.Port)
+	runServer(ctx, e, addr)
 
 	return nil
 }
 
-func runServer(ctx context.Context, e *echo.Echo, port string) {
+func runServer(ctx context.Context, e *echo.Echo, addr string) {
 	serverErr := make(chan error, 1)
 	go func() {
-		serverErr <- e.Start(":" + port)
+		serverErr <- e.Start(addr)
 	}()
 
 	// Wait for either a startup error or context cancellation
@@ -220,12 +222,14 @@ func customErrorHandler(err error, c echo.Context) {
 		return
 	}
 
-	log.Error().
-		Int("code", code).
-		Str("method", c.Request().Method).
-		Str("path", c.Request().URL.Path).
-		Err(err).
-		Msg("http error")
+	if code >= 500 {
+		log.Error().
+			Int("code", code).
+			Str("method", c.Request().Method).
+			Str("path", c.Request().URL.Path).
+			Err(err).
+			Msg("error while handling request")
+	}
 
 	if c.Response().Committed {
 		return
