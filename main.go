@@ -114,9 +114,18 @@ func run(ctx context.Context, cfg Config) error {
 	e.HidePort = true
 	e.HTTPErrorHandler = customErrorHandler
 
-	e.Use(middleware.RequestLogger())
+	//e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			path := c.Request().URL.Path
+			if strings.HasPrefix(path, "/.well-known/") || path == "/favicon.ico" {
+				return c.NoContent(http.StatusNotFound)
+			}
+			return next(c)
+		}
+	})
 
 	authenticator := auth.NewAuthenticator(credentials, cfg.JWTSecret)
 	authHandler := handler.NewAuthHandler(authenticator)
