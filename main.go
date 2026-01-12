@@ -30,6 +30,7 @@ type Config struct {
 	AdminCreds string
 	JWTSecret  string
 	LogLevel   string
+	Debug      bool
 }
 
 func main() {
@@ -44,6 +45,7 @@ func main() {
 		AdminCreds: os.Getenv("ADMIN_CREDENTIALS"),
 		JWTSecret:  os.Getenv("JWT_SECRET"),
 		LogLevel:   os.Getenv("LOG_LEVEL"),
+		Debug:      os.Getenv("DEBUG") == "1",
 	}
 
 	if cfg.Port == "" {
@@ -52,12 +54,18 @@ func main() {
 	if cfg.DBPath == "" {
 		cfg.DBPath = "linked.db"
 	}
-
 	cfg.DBPath = formatDBPath(cfg.DBPath)
+
 	if cfg.AdminCreds == "" {
 		cfg.AdminCreds = "admin:admin"
 		log.Warn().Msg("using default admin credentials - set ADMIN_CREDENTIALS for production")
 	}
+
+	credentials, err := auth.NewCredentials(cfg.AdminCreds)
+	if err != nil {
+		log.Fatal().Err(err).Str("admin_creds", cfg.AdminCreds).Msg("failed to parse ADMIN_CREDENTIALS")
+	}
+
 	if cfg.JWTSecret == "" {
 		cfg.JWTSecret = cfg.AdminCreds
 		log.Warn().Msg("using ADMIN_CREDENTIALS as JWT_SECRET - set JWT_SECRET for production")
@@ -84,38 +92,38 @@ func main() {
 
 	log.Info().Msg("database initialized successfully")
 
-	linksRepo := repo.NewLinksRepo(dbInstance)
-	clicksRepo := repo.NewClicksRepo(dbInstance)
-
-	linkHandler := handler.NewLinkHandler(linksRepo, clicksRepo)
-	dashboardHandler := handler.NewDashboardHandler()
-	authHandler := handler.NewAuthHandler(cfg.AdminCreds, cfg.JWTSecret)
-
 	e := echo.New()
+	defer e.Close()
+
 	e.HideBanner = true
 	e.HidePort = true
 
 	e.HTTPErrorHandler = customErrorHandler
 
-	e.Use(middleware.Logger())
+	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
-
 	e.Use(middleware.CORS())
 
-	// Public routes (must be before parameterized routes)
+	authenticator := auth.NewAuthenticator(credentials, cfg.JWTSecret)
+	authHandler := handler.NewAuthHandler(authenticator)
+
 	e.GET("/", authHandler.ServeLoginPage)
 	e.POST("/login", authHandler.Login)
 	e.GET("/logout", authHandler.Logout)
 
-	// Protected routes (must be before parameterized routes)
-	authMiddleware := newAuthMiddleware(cfg.AdminCreds, cfg.JWTSecret)
+	authMiddleware := auth.NewAuthMiddleware(authenticator)
 
 	api := e.Group("/api")
 	api.Use(authMiddleware)
+
+	linksRepo := repo.NewLinksRepo(dbInstance)
+	clicksRepo := repo.NewClicksRepo(dbInstance)
+	linkHandler := handler.NewLinkHandler(linksRepo, clicksRepo)
 	api.POST("/links", linkHandler.CreateLink)
 	api.GET("/links", linkHandler.ListLinks)
 	api.DELETE("/links/:id", linkHandler.DeleteLink)
 
+	dashboardHandler := handler.NewDashboardHandler()
 	e.GET("/dashboard", dashboardHandler.ServeHTML, authMiddleware)
 
 	// Parameterized route (must be last)
@@ -125,6 +133,7 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create static filesystem")
 	}
+
 	e.StaticFS("/static", echo.MustSubFS(subFS, ""))
 
 	e.GET("/health", func(c echo.Context) error {
@@ -160,77 +169,6 @@ func formatDBPath(path string) string {
 	params.Set("_busy_timeout", "5000")
 
 	return path + "?" + params.Encode()
-}
-
-type authStrategy func(c echo.Context) (bool, error)
-
-func newAuthMiddleware(expectedCreds, jwtSecret string) echo.MiddlewareFunc {
-	strategies := []authStrategy{
-		authWithJWTCookie(jwtSecret),
-		authWithBasicAuth(expectedCreds),
-	}
-
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			for _, strategy := range strategies {
-				authenticated, err := strategy(c)
-				if err != nil {
-					continue
-				}
-				if authenticated {
-					return next(c)
-				}
-			}
-			return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
-		}
-	}
-}
-
-func authWithJWTCookie(jwtSecret string) authStrategy {
-	return func(c echo.Context) (bool, error) {
-		cookie, err := c.Cookie("auth_token")
-		if err != nil || cookie == nil || cookie.Value == "" {
-			return false, nil
-		}
-
-		claims, err := auth.ValidateToken(cookie.Value, jwtSecret)
-		if err != nil {
-			return false, nil
-		}
-
-		// Refresh the token on every successful validation
-		newToken, err := auth.RefreshToken(claims.Subject, jwtSecret)
-		if err != nil {
-			// If refresh fails, still allow the request but log the error
-			log.Error().Err(err).Msg("failed to refresh token")
-			return true, nil
-		}
-
-		// Set the refreshed cookie
-		refreshedCookie := &http.Cookie{
-			Name:     "auth_token",
-			Value:    newToken,
-			Path:     "/",
-			HttpOnly: true,
-			Secure:   false, // Set to true in production with HTTPS
-			SameSite: http.SameSiteLaxMode,
-			MaxAge:   int(30 * 24 * 60 * 60), // 30 days in seconds
-		}
-		c.SetCookie(refreshedCookie)
-
-		return true, nil
-	}
-}
-
-func authWithBasicAuth(expectedCreds string) authStrategy {
-	validUsername, validPassword, _ := strings.Cut(expectedCreds, ":")
-	return func(c echo.Context) (bool, error) {
-		username, password, ok := c.Request().BasicAuth()
-		if !ok {
-			return false, nil
-		}
-		return username == validUsername && password == validPassword, nil
-	}
 }
 
 func customErrorHandler(err error, c echo.Context) {
