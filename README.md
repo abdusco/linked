@@ -1,6 +1,13 @@
-# Link Shortener
+# linked
 
 A fast link shortener built with Go, Echo, SQLite, and Alpine.js.
+
+## Screenshots
+
+<img height="300" alt="Shot_2026-01-12_10 16 09@2x" src="https://github.com/user-attachments/assets/14c9bd74-5065-45ad-916f-6c4c6853c989" />
+
+<img height="300" alt="Shot_2026-01-12_10 17 19@2x" src="https://github.com/user-attachments/assets/90066d3c-275a-44aa-a41e-810a0451979a" />
+
 
 ## Quick Start
 
