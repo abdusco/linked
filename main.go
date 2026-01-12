@@ -165,7 +165,6 @@ func run(ctx context.Context, cfg Config) error {
 
 	log.Info().Str("address", cfg.Port).Msg("server starting")
 
-	// Run server and handle graceful shutdown
 	runServer(ctx, e, cfg.Port)
 
 	return nil
@@ -177,8 +176,15 @@ func runServer(ctx context.Context, e *echo.Echo, port string) {
 		serverErr <- e.Start(":" + port)
 	}()
 
-	// Wait for context cancellation (Ctrl+C or SIGTERM)
-	<-ctx.Done()
+	// Wait for either a startup error or context cancellation
+	select {
+	case err := <-serverErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error().Err(err).Msg("server error")
+		}
+		return
+	case <-ctx.Done():
+	}
 
 	log.Info().Msg("shutdown signal received, gracefully shutting down...")
 
