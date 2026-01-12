@@ -1,35 +1,47 @@
+class UnauthenticatedError extends Error {
+	constructor(message) {
+		super(message);
+		this.name = 'UnauthenticatedError';
+	}
+}
+
+function loginApp() {
+	return {
+		username: '',
+		password: '',
+		submitting: false,
+		errorMessage: '',
+
+		async login() {
+			this.errorMessage = '';
+			this.submitting = true;
+
+			try {
+				await fetchJSON('/login', {
+					method: 'POST',
+					body: { username: this.username, password: this.password }
+				});
+
+				window.location.href = '/dashboard';
+			} catch (error) {
+				this.errorMessage = error.message || 'An error occurred';
+			} finally {
+				this.submitting = false;
+			}
+		},
+	};
+}
+
 function app() {
 	return {
 		links: [],
 		loading: true,
 		creating: false,
 		message: { text: '', type: '' },
-		pollInterval: null,
 		messageTimeout: null,
 
 		init() {
 			this.loadLinks();
-			this.startPolling();
-			document.addEventListener('visibilitychange', () => {
-				if (document.hidden) {
-					this.stopPolling();
-				} else {
-					this.startPolling();
-				}
-			});
-		},
-
-		startPolling() {
-			if (!this.pollInterval) {
-				this.pollInterval = setInterval(() => this.loadLinks(), 10000);
-			}
-		},
-
-		stopPolling() {
-			if (this.pollInterval) {
-				clearInterval(this.pollInterval);
-				this.pollInterval = null;
-			}
 		},
 
 		async loadLinks() {
@@ -38,7 +50,7 @@ function app() {
 				const response = await fetchJSON('/api/links');
 				this.links = response?.links || [];
 			} catch (error) {
-				this.showError(error.message);
+				this.handleError(error);
 			} finally {
 				this.loading = false;
 			}
@@ -67,7 +79,7 @@ function app() {
 					await this.loadLinks();
 				}
 			} catch (error) {
-				this.showError(error.message);
+				this.handleError(error);
 			} finally {
 				this.creating = false;
 			}
@@ -87,7 +99,7 @@ function app() {
 				this.showMessage('Link deleted successfully!', 'success');
 				await this.loadLinks();
 			} catch (error) {
-				this.showError(error.message);
+				this.handleError(error);
 			} finally {
 				this.loading = false;
 			}
@@ -96,7 +108,7 @@ function app() {
 		showMessage(text, type) {
 			this.clearMessageTimeout();
 			this.message = { text, type };
-			
+
 			if (type === 'success') {
 				this.messageTimeout = setTimeout(() => {
 					this.message.text = '';
@@ -106,6 +118,14 @@ function app() {
 
 		showError(text) {
 			this.showMessage(text, 'error');
+		},
+
+		handleError(error) {
+			if (error instanceof UnauthenticatedError) {
+				window.location.href = '/';
+				return;
+			}
+			this.showError(error.message);
 		},
 
 		clearMessageTimeout() {
@@ -147,10 +167,11 @@ function copyToClipboard(text) {
  * @param {string} url - The URL to fetch from.
  * @param {RequestInit} options - The options to pass to the fetch function.
  * @returns {Promise<Object | null>} - The JSON response or null if the status is 204.
+ * @throws {UnauthenticatedError} If status is 401
  * @throws {Error} If status >= 400, throws error with API message
  */
 async function fetchJSON(url, options) {
-	let {headers, body, ...rest} = options || {};	
+	let { headers, body, ...rest } = options || {};
 	const response = await fetch(url, {
 		headers: {
 			'Content-Type': 'application/json',
@@ -165,6 +186,11 @@ async function fetchJSON(url, options) {
 	}
 
 	const data = await response.json();
+
+	if (response.status === 401) {
+		const errorMessage = data?.error || data?.message || 'Unauthorized';
+		throw new UnauthenticatedError(errorMessage);
+	}
 
 	if (response.status >= 400) {
 		const errorMessage = data?.error || data?.message || `HTTP error! status: ${response.status}`;

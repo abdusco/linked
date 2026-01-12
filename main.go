@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/abdusco/linked/internal/auth"
 	"github.com/abdusco/linked/internal/db"
 	"github.com/abdusco/linked/internal/handler"
 	"github.com/abdusco/linked/internal/repo"
@@ -27,6 +28,7 @@ type Config struct {
 	Port       string
 	DBPath     string
 	AdminCreds string
+	JWTSecret  string
 	LogLevel   string
 }
 
@@ -40,6 +42,7 @@ func main() {
 		Port:       os.Getenv("PORT"),
 		DBPath:     os.Getenv("DB_PATH"),
 		AdminCreds: os.Getenv("ADMIN_CREDENTIALS"),
+		JWTSecret:  os.Getenv("JWT_SECRET"),
 		LogLevel:   os.Getenv("LOG_LEVEL"),
 	}
 
@@ -54,6 +57,10 @@ func main() {
 	if cfg.AdminCreds == "" {
 		cfg.AdminCreds = "admin:admin"
 		log.Warn().Msg("using default admin credentials - set ADMIN_CREDENTIALS for production")
+	}
+	if cfg.JWTSecret == "" {
+		cfg.JWTSecret = cfg.AdminCreds
+		log.Warn().Msg("using ADMIN_CREDENTIALS as JWT_SECRET - set JWT_SECRET for production")
 	}
 	if cfg.LogLevel == "" {
 		cfg.LogLevel = "info"
@@ -82,6 +89,7 @@ func main() {
 
 	linkHandler := handler.NewLinkHandler(linksRepo, clicksRepo)
 	dashboardHandler := handler.NewDashboardHandler()
+	authHandler := handler.NewAuthHandler(cfg.AdminCreds, cfg.JWTSecret)
 
 	e := echo.New()
 	e.HideBanner = true
@@ -94,18 +102,24 @@ func main() {
 
 	e.Use(middleware.CORS())
 
-	e.GET("/:slug", linkHandler.Redirect)
+	// Public routes (must be before parameterized routes)
+	e.GET("/", authHandler.ServeLoginPage)
+	e.POST("/login", authHandler.Login)
+	e.GET("/logout", authHandler.Logout)
+
+	// Protected routes (must be before parameterized routes)
+	authMiddleware := newAuthMiddleware(cfg.AdminCreds, cfg.JWTSecret)
 
 	api := e.Group("/api")
-	api.Use(newBasicAuthMiddleware(cfg.AdminCreds))
+	api.Use(authMiddleware)
 	api.POST("/links", linkHandler.CreateLink)
 	api.GET("/links", linkHandler.ListLinks)
 	api.DELETE("/links/:id", linkHandler.DeleteLink)
 
-	e.GET("/dashboard", dashboardHandler.ServeHTML, newBasicAuthMiddleware(cfg.AdminCreds))
-	e.GET("/", func(c echo.Context) error {
-		return c.String(http.StatusNotFound, "Go away")
-	})
+	e.GET("/dashboard", dashboardHandler.ServeHTML, authMiddleware)
+
+	// Parameterized route (must be last)
+	e.GET("/:slug", linkHandler.Redirect)
 
 	subFS, err := fs.Sub(web.FS, ".")
 	if err != nil {
@@ -148,14 +162,75 @@ func formatDBPath(path string) string {
 	return path + "?" + params.Encode()
 }
 
-func newBasicAuthMiddleware(expectedCreds string) echo.MiddlewareFunc {
+type authStrategy func(c echo.Context) (bool, error)
+
+func newAuthMiddleware(expectedCreds, jwtSecret string) echo.MiddlewareFunc {
+	strategies := []authStrategy{
+		authWithJWTCookie(jwtSecret),
+		authWithBasicAuth(expectedCreds),
+	}
+
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			for _, strategy := range strategies {
+				authenticated, err := strategy(c)
+				if err != nil {
+					continue
+				}
+				if authenticated {
+					return next(c)
+				}
+			}
+			return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
+		}
+	}
+}
+
+func authWithJWTCookie(jwtSecret string) authStrategy {
+	return func(c echo.Context) (bool, error) {
+		cookie, err := c.Cookie("auth_token")
+		if err != nil || cookie == nil || cookie.Value == "" {
+			return false, nil
+		}
+
+		claims, err := auth.ValidateToken(cookie.Value, jwtSecret)
+		if err != nil {
+			return false, nil
+		}
+
+		// Refresh the token on every successful validation
+		newToken, err := auth.RefreshToken(claims.Subject, jwtSecret)
+		if err != nil {
+			// If refresh fails, still allow the request but log the error
+			log.Error().Err(err).Msg("failed to refresh token")
+			return true, nil
+		}
+
+		// Set the refreshed cookie
+		refreshedCookie := &http.Cookie{
+			Name:     "auth_token",
+			Value:    newToken,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   false, // Set to true in production with HTTPS
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   int(30 * 24 * 60 * 60), // 30 days in seconds
+		}
+		c.SetCookie(refreshedCookie)
+
+		return true, nil
+	}
+}
+
+func authWithBasicAuth(expectedCreds string) authStrategy {
 	validUsername, validPassword, _ := strings.Cut(expectedCreds, ":")
-	return middleware.BasicAuthWithConfig(middleware.BasicAuthConfig{
-		Validator: func(username, password string, c echo.Context) (bool, error) {
-			return username == validUsername && password == validPassword, nil
-		},
-		Realm: "Linked Admin",
-	})
+	return func(c echo.Context) (bool, error) {
+		username, password, ok := c.Request().BasicAuth()
+		if !ok {
+			return false, nil
+		}
+		return username == validUsername && password == validPassword, nil
+	}
 }
 
 func customErrorHandler(err error, c echo.Context) {
