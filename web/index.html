@@ -1,80 +1,76 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>link·ed</title>
-	<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-	<div class="container" x-data="app()" x-init="init()">
-		<div class="header">
-			<h1>link·ed</h1>
-			<p>Create and manage shortened links</p>
-		</div>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>link·ed</title>
+        <link href="/static/fonts.css" rel="stylesheet" />
+        <link rel="stylesheet" href="/static/style.css" />
+    </head>
+    <body>
+        <div class="container" x-data="app()" x-init="init()">
+            <div class="header">
+                <h1>link·ed</h1>
+                <p>Create and manage shortened links</p>
+            </div>
 
-		<div class="card">
-			<form @submit.prevent="createLink()">
-				<input type="url" id="url" placeholder="https://example.com" required>
-				<input type="text" id="slug" placeholder="Custom slug (optional)">
-				<button type="submit" :disabled="creating">
-					<span x-text="creating ? 'Creating...' : 'Create'"></span>
-				</button>
-			</form>
+            <div class="card">
+                <form @submit.prevent="createLink()">
+                    <input type="url" id="url" placeholder="https://example.com" required />
+                    <input type="text" id="slug" placeholder="Custom slug (optional)" />
+                    <button type="submit" :disabled="creating">
+                        <span x-text="creating ? 'Creating...' : 'Create'"></span>
+                    </button>
+                </form>
 
-			<div x-show="message.text" :class="`alert alert-${message.type}`" class="alert">
-				<span x-text="message.text"></span>
-			</div>
-		</div>
+                <div x-show="message.text" :class="`alert alert-${message.type}`" class="alert">
+                    <span x-text="message.text"></span>
+                </div>
+            </div>
 
-		<div class="card">
-			<h2>Your Links</h2>
+            <div class="card">
+                <h2>Your Links</h2>
 
-			<div x-show="loading && !links.length" class="loading">
-				Loading...
-			</div>
+                <div x-show="loading && !links.length" class="loading">Loading...</div>
 
-			<div x-show="!loading && !links.length" class="empty-state">
-				<p>No links yet. Create one above!</p>
-			</div>
+                <div x-show="!loading && !links.length" class="empty-state">
+                    <p>No links yet. Create one above!</p>
+                </div>
 
-			<div x-show="links.length" class="table-responsive">
-				<table>
-					<thead>
-						<tr>
-							<th>Slug</th>
-							<th>Link</th>
-							<th>Clicks</th>
-							<th>Last Clicked</th>
-							<th>Actions</th>
-						</tr>
-					</thead>
-					<tbody>
-						<template x-for="link in links" :key="link.id">
-							<tr>
-								<td data-label="Slug">
-									<span class="slug-badge" x-text="link.slug" @click="copyShortUrl(link.short_url)" :title="'Click to copy: ' + link.short_url"></span>
-								</td>
-								<td data-label="Link" :title="link.url">
-									<span class="url-domain" x-text="parseUrl(link.url).domain"></span><span class="url-path" x-text="parseUrl(link.url).path"></span>
-								</td>
-								<td data-label="Clicks" x-text="link.stats?.clicks || 0"></td>
-								<td data-label="Last Clicked" x-text="link.stats?.last_clicked_at ? formatDate(link.stats?.last_clicked_at) : '-'"></td>
-								<td data-label="Actions">
-									<button type="button" @click="deleteLink(link.id, link.slug)" class="delete-btn" :disabled="loading">
-										Delete
-									</button>
-								</td>
-							</tr>
-						</template>
-					</tbody>
-				</table>
-			</div>
-		</div>
-	</div>
+                <div x-show="links.length" class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Slug</th>
+                                <th>Link</th>
+                                <th>Clicks</th>
+                                <th>Last Clicked</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="link in links" :key="link.id">
+                                <tr>
+                                    <td data-label="Slug">
+                                        <span class="slug-badge" x-text="link.slug" @click="copyShortUrl(link.short_url)" :title="'Click to copy: ' + link.short_url"></span>
+                                    </td>
+                                    <td data-label="Link" :title="link.url">
+                                        <span class="url-domain" x-text="parseUrl(link.url).domain"></span><span class="url-path" x-text="parseUrl(link.url).path"></span>
+                                    </td>
+                                    <td data-label="Clicks" x-text="link.stats?.clicks || 0"></td>
+                                    <td data-label="Last Clicked" x-text="link.stats?.last_clicked_at ? formatDate(link.stats?.last_clicked_at) : '-'"></td>
+                                    <td data-label="Actions">
+                                        <button type="button" @click="deleteLink(link.id, link.slug)" class="delete-btn" :disabled="loading">Delete</button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
 
-	<script defer src="/static/alpine.min.js"></script>
-	<script src="/static/app.js"></script>
-</body>
+        <script defer src="/static/alpine.min.js"></script>
+        <script src="/static/app.js"></script>
+    </body>
 </html>
